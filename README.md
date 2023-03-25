@@ -1,0 +1,1 @@
+dotnet fsi SchemaInference.fsx
