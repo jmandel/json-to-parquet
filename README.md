@@ -1,1 +1,3 @@
-dotnet fsi SchemaInference.fsx
+# JSON to Parquet Conversion
+
+    dotnet run -- ex.ndjson ex.parquet

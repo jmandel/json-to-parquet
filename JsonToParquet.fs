@@ -4,6 +4,7 @@ open Parquet.Schema
 open System.Text.Json
 open System.IO
 open Parquet.Rows
+open Parquet
 
 type SchemaType =
     | JsonObject of InferredKVs
@@ -155,14 +156,16 @@ let rec convertInferredSchemaToField (fieldName: string) (inferredSchema: Inferr
         | JsonUnknown ->
             failwith (sprintf "Unsupported InferredSchema type for field '%s': %A" fieldName inferredSchema.Type)
     r
-
-let createParquetTableFromInferredSchema (inferredSchema: InferredSchema) (jsonObjects: JsonElement seq) : Table =
+let createParquetTable (inferredSchema: InferredSchema) : Table =
     let schemaFields =
         match inferredSchema.Type with
         | JsonObject kvs -> kvs |> Map.map convertInferredSchemaToField |> Map.toList |> List.map snd
         | _ -> failwith "Root schema must be a JsonObject"
     let schema = new ParquetSchema(schemaFields)
-    let table = new Table(schema)
+    new Table(schema)
+
+let populateParquetTable  (jsonObjects: JsonElement seq) (table: Table): Table =
+    let schemaFields = table.Schema.Fields
 
     let rec extractValue (field: Field) (element: JsonElement) : obj =
         let handleArray (elementType: Field) (element: JsonElement) =
@@ -171,6 +174,7 @@ let createParquetTableFromInferredSchema (inferredSchema: InferredSchema) (jsonO
                 elementSeq |> Seq.toArray |> box
             else
                 elementSeq |> Seq.map (fun v -> v :?> Parquet.Rows.Row) |> Seq.toArray |> box
+
         match element.ValueKind with
         | JsonValueKind.Null -> box (null)
         | _ ->
@@ -192,8 +196,8 @@ let createParquetTableFromInferredSchema (inferredSchema: InferredSchema) (jsonO
     for jsonObject in jsonObjects do
         let rowValues =
             schemaFields
+            |> List.ofSeq
             |> List.map (fun field ->
-                printfn $"topleve {field} {field.IsNullable}"
                 let mutable foundElement = JsonElement()
 
                 match jsonObject.TryGetProperty(field.Name, &foundElement) with
@@ -204,3 +208,12 @@ let createParquetTableFromInferredSchema (inferredSchema: InferredSchema) (jsonO
                     | _ -> failwith (sprintf "Non-optional property '%s' is missing" field.Name))
         table.Add(new Row(rowValues))
     table
+
+let writeParquetTableToFile  (filePath: string) (table: Table): bool =
+    async {
+        use fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None)
+        use! parquetWriter = ParquetWriter.CreateAsync(table.Schema, fileStream) |> Async.AwaitTask
+        do! parquetWriter.WriteAsync(table) |> Async.AwaitTask
+        return true
+    }
+    |> Async.RunSynchronously
