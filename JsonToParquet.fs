@@ -125,21 +125,29 @@ let inferSchemaFromFile (filePath: string) : InferredSchema =
 let iss = inferSchemaFromFile ("example.json")
 printInferredSchema iss 0
 
-let inferSchemaFromNdjsonFile (filePath: string) : InferredSchema =
-    use reader = new StreamReader(filePath)
-
-    let rec loop (currentSchema: InferredSchema) =
-        match reader.ReadLine() with
-        | null -> currentSchema
-        | line ->
+let inferSchemaFromSeq (lines: seq<string>) : InferredSchema =
+    let rec loop (currentSchema: InferredSchema) (remainingLines: seq<string>) =
+        match Seq.tryHead remainingLines with
+        | None -> currentSchema
+        | Some line ->
             let jsonElement = JsonDocument.Parse(line).RootElement
             let schemaForLine = createInferredSchema jsonElement
             let updatedSchema = mergeInferredSchema currentSchema schemaForLine
-            loop updatedSchema
+            loop updatedSchema (Seq.skip 1 remainingLines)
 
-    loop { Type = JsonUnknown; Optional = false }
+    loop { Type = JsonUnknown; Optional = false } lines
 
+let readLinesLazily (filePath: string) : seq<string> =
+    seq {
+        use reader = new StreamReader(filePath)
+        while not reader.EndOfStream do
+            yield reader.ReadLine()
+    }
 
+let inferSchemaFromNdjsonFile (filePath: string) : InferredSchema =
+    filePath
+    |> readLinesLazily
+    |> inferSchemaFromSeq
 
 let rec convertInferredSchemaToField (fieldName: string) (inferredSchema: InferredSchema) : Field =
     let r =

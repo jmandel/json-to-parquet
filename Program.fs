@@ -8,11 +8,9 @@ let infile = Environment.GetCommandLineArgs()[1]
 let outfile = Environment.GetCommandLineArgs()[2]
 
 let lines =
-    File.ReadAllLines(infile)
-    |> List.ofSeq
-    |> List.map JsonDocument.Parse
-    |> List.map (fun d -> d.RootElement)
-
+    File.ReadLines(infile) // Lazily read lines from the file
+    |> Seq.map JsonDocument.Parse
+    |> Seq.map (fun d -> d.RootElement)
 
 let r =
     infile
